@@ -1,63 +1,68 @@
-import os
+import re
+from urllib.request import urlopen
 from flask import *
-from dotenv import load_dotenv
-import requests
+from data import *
+from bs4 import BeautifulSoup
+from passward import pwd
+import pyodbc
 
-load_dotenv()
 app = Flask(__name__)
 
-API_SRT = f"{os.getenv('API_KEY')}"
-infor = ["profile", "contact", "project", "skills"]
-catigories = [
-   {'key': "profile", 'value': "Israeli American citizen, 19 years old, finishing BCs in Computer Sience in Ashkelon College....."},
-   {'key': "education", 'value':"For high school Mesivta Beit Shemesh, afeter went for a nother 3 years in Beit Medrash Derech Chaim and Ashkelon college "},
-   {'key': "Languages", 'value': "speak English and Hebrew native speaker, and a bit of Arabic"},
-   {'key': "volunteering", 'value': "EMT MDA Israel, Yedidim volunteer"}]
-information = [{'key': "name", 'value': "Yakov Bader"}, {'key': "address", 'value': "Matityahu ......"}, {'key': "phone", 'value': "+972 53 734 4943"},
-               {'key': "linkin", 'value': "link"}, {'key': "email", 'value': "yakovbader@gmail.com"}, {'key': "github", 'value': "link........."}]
-catigory = [{'cati': "Languages", 'skills': []},
-            {'cati': "tools", 'skills': ["Full stack development", "MongoDB"]}]
-projects = []
+
+def github_data():
+    projects.clear()
+    user = "Yakov-Bader"
+    url = f"https://github.com/{user}?tab=repositories"
+    html = urlopen(url).read()
+    soup = BeautifulSoup(html, "html.parser").find_all("h3", {"class": "wb-break-all"})
+    for proj in soup:
+        name = proj.find("a").text
+        name = name.replace("\n", "")
+        name = name.replace(" ", "")
+
+        link = f"https://github.com/{user}/{name}"
+        page = urlopen(link).read()
+        bs = BeautifulSoup(page, "html.parser")
+        s = bs.find("article", {"class": "markdown-body entry-content container-lg"})
+        readme = s.text
+        readme = readme.replace("\n", ' ')
+        if bs.find("h1", {"dir": "auto"}):
+            h1 = bs.find("h1", {"dir": "auto"}).text
+            readme = readme.lstrip(h1)
+
+        projects.append({'name': name, 'link': link, 'text': readme})
+
+        lan = bs.find("li", {"class": "d-inline"})
+        language = lan.text
+        language = language.replace("\n", '').replace(".", '').replace("%", '')
+        pattern = r'[0-9]'
+        language = re.sub(pattern, '', language)
+        if language not in catigory[0]["skills"]:
+            catigory[0]["skills"].append(language)
+
+
+def SQL_data():
+    string = f"workstation id=ybResume.mssql.somee.com;packet size=4096;user id=YakovBader;pwd={pwd};data source=ybResume.mssql.somee.com;persist security info=False;initial catalog=ybResume"
+    conn = pyodbc.connect(string)
+    cursor = conn.cursor()
+    cursor.execute("select * from f")
+    for row in cursor:
+        print(f'{row}')
 
 
 @app.route('/', methods=["POST", "GET"])
-def hello_world():
+def get_data():
     @after_this_request
     def add_header(response):
         response.headers.add('Access-Control-Allow-Origin', '*')
         return response
 
-    user = "Yakov-Bader"
-    url = f"https://api.github.com/users/{user}/repos"
-    user_data = requests.get(url).json()
-    for p in user_data:
-        urlLanguages = f"https://api.github.com/repos/{user}/{p['name']}/languages"
-        languages = requests.get(urlLanguages).json()
-        for lan in languages:
-            if lan not in catigory[0]["skills"]:
-                catigory[0]["skills"].append(lan)
-
-        projects.append({'name': p['name'], 'text': "blabla", 'link': p['html_url']})
-
+    github_data()
+    #SQL_data()
     return jsonify(catigories, information, catigory, projects, infor)
 
 
 if __name__ == '__main__':
     app.run(host='localhost', port=5000, debug=True)
 
-# https://www.techwithtim.net/tutorials/flask/http-methods-get-post/
-#
-# from github import Github
-#
-# # Authenticate yourself
-# g = Github("yourusername", "yourauthtoken")
-#
-# # Find your repository and path of README.md
-# repo=g.get_user().get_repo("your repo")
-# file = repo.get_contents("README.md")
-#
-# # The new contents of your README.md
-# content = "your updated README file contents"
-#
-# # Update README.md
-# repo.update_file("README.md", "commit message", content, file.sha)
+
