@@ -1,2 +1,2 @@
 # resume-api
-contains web scraping and python api
+contains web scraping and flask python api
